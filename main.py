@@ -82,4 +82,6 @@ def submit_answer(answer: schemas.AnswerRequest, db: Session = Depends(get_db)):
     except ValueError:
         raise HTTPException(status_code=404, detail="Exercise not found")
 
-   
+   if __name__ == "__main__":
+    uvicorn.run("main:app")
+
