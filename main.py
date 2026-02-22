@@ -32,15 +32,20 @@ print("✅ backend.main started")
 
 # 3. The actual "catcher" for the fetch request
 @app.post("/login")
-async def login(user_data: LoginRequest):
-    # This will print in your Python terminal when the app connects!
-    print(f"🎉 IT WORKS! Someone is trying to log in with: {user_data.email}")
-    
-    # This is the message sent BACK to the phone
+def login(user_data: LoginRequest, db: Session = Depends(get_db)):
+    user = crud.get_user_by_email(db, user_data.email)
+
+    if not user:
+        raise HTTPException(status_code=400, detail="User not found")
+
+    if user.password != user_data.password:
+        raise HTTPException(status_code=400, detail="Wrong password")
+
     return {
-        "message": "Hello from the Python backend!", 
-        "email_received": user_data.email
+        "message": "Login successful",
+        "user_id": user.id
     }
+
 
 @app.get("/")
 def root():
@@ -81,3 +86,4 @@ def submit_answer(answer: schemas.AnswerRequest, db: Session = Depends(get_db)):
         return schemas.AnswerResponse(**result)
     except ValueError:
         raise HTTPException(status_code=404, detail="Exercise not found")
+
