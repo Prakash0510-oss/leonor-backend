@@ -1,17 +1,27 @@
 from datetime import datetime
 from sqlalchemy.orm import Session
-import models, schemas
+from auth import hash_password
+from models import User
 
+import models, schemas, crud, game_logic
 
 def create_user(db: Session, user: schemas.UserCreate):
+    hashed_password = hash_password(user.password)
+    
     db_user = models.User(
         username=user.username,
+        email=user.email,
+        password=hashed_password,
         native_language=user.native_language,
+        
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
+
+def get_user_by_email(db: Session, email: str):
+    return db.query(models.User).filter(models.User.email == email).first()
 
 def get_user(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
