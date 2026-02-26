@@ -1,9 +1,9 @@
 from datetime import datetime
 from sqlalchemy.orm import Session
-from .auth import hash_password
+from auth import hash_password
 from models import User
 
-import models, schemas, crud, game_logic
+import models, schemas
 
 def create_user(db: Session, user: schemas.UserCreate):
     hashed_password = hash_password(user.password)
@@ -109,4 +109,5 @@ def get_due_exercises(db: Session, user_id: int, limit: int = 10):
     )
     
     return due_exercises
+
 
