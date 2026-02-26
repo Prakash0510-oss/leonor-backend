@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from database import Base, engine, get_db
-import models, schemas, crud, game_logic
+from . import models, schemas, crud, game_logic
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -86,4 +86,5 @@ def submit_answer(answer: schemas.AnswerRequest, db: Session = Depends(get_db)):
         return schemas.AnswerResponse(**result)
     except ValueError:
         raise HTTPException(status_code=404, detail="Exercise not found")
+
 
