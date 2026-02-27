@@ -36,15 +36,18 @@ class Lesson(Base):
 
 class Exercise(Base):
     __tablename__ = "exercises"
+
     id = Column(Integer, primary_key=True, index=True)
     lesson_id = Column(Integer, ForeignKey("lessons.id"))
     
     question_type = Column(String) # 'multiple_choice', 'translation', 'listening'
     prompt = Column(String, nullable=False)
     correct_answer = Column(String, nullable=False)
+
     # Storing distractors as nullable for flexible exercise types
     wrong_answer_1 = Column(String, nullable=True)
     wrong_answer_2 = Column(String, nullable=True)
+    wrong_answer_3 = Column(String, nullable=True)
     
     lesson = relationship("Lesson", back_populates="exercises")
 
@@ -71,11 +74,22 @@ class UserExerciseProgress(Base):
 class UserProgress(Base):
     """Tracks overall lesson completion and streaks"""
     __tablename__ = "user_progress"
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     lesson_id = Column(Integer, ForeignKey("lessons.id"))
-    
+
+    xp = Column(Integer, default=0)
+    streak = Column(Integer, default=0)
     completed = Column(Boolean, default=False)
     completed_at = Column(DateTime, nullable=True)
-    
+
     user = relationship("User", back_populates="progress")
+    
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    is_used = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True))

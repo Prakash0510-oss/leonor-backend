@@ -1,5 +1,4 @@
 import os
-import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -13,88 +12,107 @@ import models
 from database import get_db
 
 # ---------------------------------------------------
-# 1. Configuration & Security Setup
+# 1. Configuration
 # ---------------------------------------------------
-# NEVER hardcode these in production. Use .env files.
 SECRET_KEY = os.getenv("SECRET_KEY", "your-super-complex-secret-key-for-leonor")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = 15  # Short life for safety
+REFRESH_TOKEN_EXPIRE_DAYS = 7     # Long life for convenience
 
-# Use Argon2 if possible, otherwise Bcrypt is the standard
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# This tells FastAPI where to look for the "Login" endpoint
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
 
 # ---------------------------------------------------
-# 2. Password & Token Utilities
+# 2. Functions (The "What is it" Section)
 # ---------------------------------------------------
 
 def hash_password(password: str) -> str:
-    """Returns the hashed version of a plain text password."""
+    """
+    WHAT IS IT: The "Scrambler".
+    It takes a clear password like "12345" and turns it into a long 
+    random string. You save this string in the DB, never the real password.
+    """
     return pwd_context.hash(password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Checks if the provided password matches the stored hash."""
+    """
+    WHAT IS IT: The "Key Matcher".
+    When a user logs in, it compares the password they typed with the 
+    scrambled string in the DB.
+    """
     return pwd_context.verify(plain_password, hashed_password)
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Generates a secure JWT token with an expiration timestamp."""
-    to_encode = data.copy()
-    
-    # Python 3.12+ uses timezone-aware UTC
+def create_access_token(user_id: int) -> str:
+    """
+    WHAT IS IT: The "Temporary Entry Pass".
+    Generates a JWT that lasts 15 minutes. It contains the user's ID
+    under the 'sub' (subject) key.
+    """
     now = datetime.now(timezone.utc)
-    if expires_delta:
-        expire = now + expires_delta
-    else:
-        expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    to_encode.update({"iat": now, "exp": expire})
+    expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode = {"sub": str(user_id), "iat": now, "exp": expire}
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-# ---------------------------------------------------
-# 3. Authentication Dependency
-# ---------------------------------------------------
-
-
-
-def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
-) -> models.User:
+def create_refresh_token(user_id: int, db: Session) -> str:
     """
-    Decodes the JWT, validates the user_id, and fetches the user from the DB.
-    Use this as a dependency in your routes: (user = Depends(get_current_user))
+    WHAT IS IT: The "Permanent Membership Card".
+    Generates a random 64-character string and saves it in your 
+    database linked to the user.
+    """
+    token_str = os.urandom(32).hex()
+    db_token = models.RefreshToken(
+        token=token_str, 
+        user_id=user_id,
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(db_token)
+    db.commit()
+    return token_str
+
+def rotate_refresh_token(old_token_str: str, db: Session):
+    """
+    WHAT IS IT: The "Security Alarm".
+    It swaps an old refresh token for a new one. If it sees an old 
+    token being used twice, it assumes a HACKER is active and 
+    immediately logs the user out of all devices for safety.
+    """
+    token_record = db.query(models.RefreshToken).filter(models.RefreshToken.token == old_token_str).first()
+    
+    if not token_record:
+        raise HTTPException(status_code=401, detail="Session not found")
+
+    # If already used, someone stole the token!
+    if token_record.is_used:
+        db.query(models.RefreshToken).filter(models.RefreshToken.user_id == token_record.user_id).delete()
+        db.commit()
+        raise HTTPException(status_code=401, detail="Security breach detected. Please log in again.")
+
+    # Mark as used and give a fresh one
+    token_record.is_used = True
+    db.commit()
+    return create_refresh_token(token_record.user_id, db)
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
+    """
+    WHAT IS IT: The "Bouncer".
+    This runs before every private API call. It checks if the token 
+    is valid and returns the 'User' object so you know who is calling.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired credentials",
+        detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
     try:
-        # 1. Decode the token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        
-        # 2. Extract the user_id (the 'sub' claim is standard for subject)
-        user_id: str = payload.get("user_id")
+        user_id: str = payload.get("sub") # Look for 'sub' (standard)
         if user_id is None:
             raise credentials_exception
-            
     except JWTError:
         raise credentials_exception
 
-    # 3. Fetch user from Database
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    
+    user = db.query(models.User).filter(models.User.id == int(user_id)).first()
     if user is None:
         raise credentials_exception
-        
-    # 4. (Optional) Check if user is active
-    if hasattr(user, "is_active") and not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="User account is deactivated"
-        )
-
     return user
