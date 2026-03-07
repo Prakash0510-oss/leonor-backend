@@ -3,6 +3,7 @@ from fastapi import FastAPI, Depends, HTTPException, APIRouter, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 
 # Security imports from your auth.py
 from auth import (
@@ -30,6 +31,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to the Leonor Language App API"}
 
 # -----------------------
 # Request Models
@@ -77,6 +82,13 @@ def refresh_session(data: RefreshRequest, db: Session = Depends(get_db)):
     token_record = db.query(models.RefreshToken).filter(
         models.RefreshToken.token == new_refresh_token_str
     ).first()
+
+    # 3. Guard Clause: ALWAYS check for existence
+    if not token_record:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Refresh token is invalid or has been revoked"
+        )
     
     new_access_token = create_access_token(user_id=token_record.user_id)
 
@@ -88,20 +100,12 @@ def refresh_session(data: RefreshRequest, db: Session = Depends(get_db)):
 
 @app.post("/register")
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    """Hashes password and creates a new user account."""
-    hashed_pw = hash_password(user.password)
-
-    db_user = models.User(
-        username=user.username,
-        email=user.email,
-        password=hashed_pw
-    )
-
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-
-    return {"message": "User created successfully"}
+    # Check if user already exists
+    if crud.get_user_by_email(db, email=user.email):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Use the helper function!
+    return crud.create_user(db=db, user=user)
 
 # -----------------------
 # Protected User Routes

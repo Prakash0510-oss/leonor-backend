@@ -20,7 +20,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 15  # Short life for safety
 REFRESH_TOKEN_EXPIRE_DAYS = 7     # Long life for convenience
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 # ---------------------------------------------------
 # 2. Functions (The "What is it" Section)
